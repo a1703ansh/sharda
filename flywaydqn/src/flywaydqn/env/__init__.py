@@ -19,5 +19,5 @@ def __getattr__(name: str) -> Any:
     """Resolve ``BeamEnv`` from :mod:`flywaydqn.env.beam_env` (Phase 3)."""
     if name == "BeamEnv":
         module = import_module("flywaydqn.env.beam_env")
-        return getattr(module, "BeamEnv")
+        return module.BeamEnv
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

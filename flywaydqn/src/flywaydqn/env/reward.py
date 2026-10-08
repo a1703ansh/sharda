@@ -23,7 +23,8 @@ Units
 
 from __future__ import annotations
 
-from typing import Callable, TypedDict
+from collections.abc import Callable
+from typing import TypedDict
 
 import numpy as np
 
@@ -96,9 +97,7 @@ def make_reward_fn(
     if max_tx_power_mw <= 0.0:
         raise ValueError(f"max_tx_power_mw must be > 0, got {max_tx_power_mw}")
     if max_throughput_ref_mbps <= 0.0:
-        raise ValueError(
-            f"max_throughput_ref_mbps must be > 0, got {max_throughput_ref_mbps}"
-        )
+        raise ValueError(f"max_throughput_ref_mbps must be > 0, got {max_throughput_ref_mbps}")
 
     def reward_fn(
         *,
