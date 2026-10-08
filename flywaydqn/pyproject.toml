@@ -28,6 +28,7 @@ dev = [
   "pytest-cov>=5.0,<6.0",
   "types-requests>=2.31,<3.0",
   "pre-commit>=3.6,<4.0",
+  "matplotlib>=3.8,<4.0",
 ]
 [project.scripts]
 flywaydqn-serve = "flywaydqn.service.app:main"
@@ -58,3 +59,9 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=flywaydqn --cov-report=term --cov-report=xml"
+
+[tool.coverage.run]
+source = ["flywaydqn"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
