@@ -1,0 +1,287 @@
+# FlywayDQN: Project Specification and Build Plan
+
+Current status (baseline commit): Phase 0 in progress — repository skeleton, pinned environment, Makefile, and CI plumbing are in place; RF core and Gymnasium environment are next.
+
+**Document purpose:** Single source of truth for an engineering agent or team implementing FlywayDQN. It defines scope, system design, formal problem definition, evaluation protocol, repository layout, and an ordered build plan with acceptance criteria.
+
+**Status conventions:** Items marked **[MUST]** are required. **[SHOULD]** is recommended. **[OPEN]** needs a decision or verification. Any numeric result quoted anywhere (README, dashboard, slides) must be produced by the evaluation pipeline in Section 8. No hard-coded results.
+
+---
+
+## 1. Summary
+
+FlywayDQN is a reinforcement-learning controller for a 5G massive-MIMO base-station sector. It chooses beam and transmit-power settings to keep user throughput high while limiting RF power density over airspace occupied by migrating bird flocks.
+
+It has three parts:
+
+1. **Simulator.** A Gymnasium environment with a 3GPP-based path-loss model, a phased-array beam model, user mobility, and flock mobility.
+2. **Controller.** A Deep Q-Network (Stable-Baselines3) over a discrete action space (codebook beam, power level, null on/off), trained against a multi-objective reward.
+3. **Digital twin.** A FastAPI service streaming simulation state to a React and deck.gl dashboard, with a plain-language explanation for each action and a QoS-versus-protection trade-off control.
+
+Deployment target (design-level, not implemented in hardware): the controller packaged as an O-RAN near-RT RIC xApp that emits policy-level beam and power constraints over E2.
+
+## 2. Problem Statement
+
+Self-organizing network (SON) optimization considers throughput, coverage, interference, and energy. It has no notion of wildlife exposure. Seasonal tower shutdowns are the existing alternative, and they sacrifice service. The goal is to show that a learned controller can reduce modeled exposure over a flock region at a bounded throughput cost, with no hardware change.
+
+### 2.1 Scope
+
+- In scope: simulation, training, evaluation against baselines, digital twin, O-RAN xApp interface design and a mock integration.
+- Out of scope: real RAN hardware, regulatory certification, claims of proven biological harm thresholds.
+
+### 2.2 Scientific framing (important)
+
+- The ecological evidence that 5G-band RF affects bird navigation is limited and contested. Behavioral disruption of magnetoreception is documented for weak broadband RF fields in the kHz to low-MHz range (e.g. Engels et al., *Nature*, 2014). Direct evidence at 3.5 GHz or mmWave is thin.
+- Frame the system as **precautionary exposure management under a configurable threshold**, not as demonstrated harm mitigation.
+- The exposure threshold is a **configurable parameter**. Default it to the ICNIRP 2020 general-public reference level for 2–300 GHz (10 W/m² = 1 mW/cm²) as a conservative regulatory anchor. Include a sensitivity analysis over thresholds (e.g. 0.01, 0.1, 1 mW/cm²). Do not present the threshold as derived from avian studies unless a specific study is cited and verified.
+
+## 3. System Architecture
+
+```
+ Flock track source ─┐                         ┌─> Training / Evaluation (offline)
+ (synthetic | radar) │                         │
+                     v                         │
+ ┌────────────┐  ┌───────────┐  ┌──────────────┴──┐   WebSocket   ┌───────────────┐
+ │ Flock model│->│ RF env    │<-│ DQN policy      │──────────────>│ FastAPI twin  │
+ │ + UE model │  │ (Gym API) │  │ (SB3, PyTorch)  │               │ service       │
+ └────────────┘  └───────────┘  └─────────────────┘               └──────┬────────┘
+                                                                         v
+                                                          React + deck.gl dashboard
+                                                          (map, beams, exposure, XAI log,
+                                                           trade-off control)
+ O-RAN path (design + mock): flock feed -> near-RT RIC xApp (policy inference) -> E2 -> gNB
+```
+
+Design rule: the simulator core, the policy, and the service layers are separate packages. The simulator has no dependency on the web stack.
+
+## 4. Formal Problem Definition
+
+### 4.1 Radio model
+
+- **Carrier:** configurable, default f_c = 3.5 GHz (n78). mmWave variant is optional.
+- **Path loss:** 3GPP TR 38.901 Urban Macro LOS, below the breakpoint distance:
+  `PL(d3D) = 28.0 + 22·log10(d3D) + 20·log10(f_c[GHz])` dB.
+  Implement the full LOS/NLOS model with breakpoint, LOS probability, and shadow fading. The single formula above is the LOS case only.
+  **Decision D1:** scenario is **UMa**; reference document is **3GPP TR 38.901 V19.4.0 (Release 19, June 2026)**. Pin this version string in `rf/pathloss.py` and the README. UMi is a config option, not a default.
+- **Antenna array:** uniform planar array, default 8×8 (64 elements), half-wavelength spacing, per-element gain pattern from TR 38.901 (Table 7.3-1). Computed array factor gives gain G(θ, φ).
+- **Beam codebook:** DFT codebook with K beams (default 16 azimuth × 1 elevation tilt; configurable).
+- **Null steering:** given codebook weights `w0` and the steering vector `a` toward the flock bearing, the nulled weights are `w = (I − a aᴴ / ‖a‖²) w0`, renormalized. This is a projection, not a learned operation. The policy chooses *when* to apply it.
+- **User links:** SINR from serving-beam gain, path loss, inter-sector interference (fixed neighbors), and noise. Throughput from Shannon with a bounded efficiency factor, or an MCS table mapping.
+
+### 4.2 Flock and exposure model
+
+- Flock is N_b individuals or a density blob with centroid, extent, altitude band, heading, and speed. Initial generator: boids/Vicsek-style model with migratory drift. Track-driven mode replays recorded tracks (Section 9).
+- **Power density** at a point at range r in direction (θ, φ): `S = P_tx · G(θ, φ) / (4π r²)` (free-space, far-field).
+- **Exposure metrics per step:**
+  - `S_max`: max power density over flock footprint
+  - `frac_over`: fraction of flock cells with `S > S_thr`
+  - `dose`: `∑ S · Δt` integrated over flock cells (time-integrated)
+
+### 4.3 MDP
+
+| Element | Definition |
+|---|---|
+| **State** | UE summary (per-user SINR, rate, bearing, range, top-M users), flock summary (centroid bearing, range, altitude, extent, heading, density), current beam index, current power level, previous throughput and exposure, trade-off weight `w = β/α` as `log10(w)` scaled to [−1, 1] (Decision D2, see 4.4) |
+| **Action** | Discrete: `(beam_idx ∈ K, power_level ∈ L, null ∈ {0,1})`. Default K=16, L=4, giving 128 actions. Flattened to one index, with an action decoder |
+| **Transition** | Mobility steps for users and flock, then radio recomputation. Δt configurable (default 100 ms, matching near-RT RIC timescales) |
+| **Episode** | Fixed horizon (e.g. 600 steps) with randomized scenario seeds: flock entry bearing, speed, user layout |
+
+### 4.4 Reward
+
+`r_t = α · T̂_t − β · Ê_t − γ · P̂_t`
+
+- `T̂_t`: sum-rate normalized by the per-scenario max-throughput reference
+- `P̂_t`: transmit power normalized by max
+- **Exposure penalty (Decision D3): softplus hinge.** With `x_t = S_p95 / S_thr`, where `S_p95` is the 95th-percentile power density over flock cells:
+  `Ê_t = (1/κ) · log(1 + exp(κ · (x_t − 1)))`, default κ = 5.
+  Rationale: smooth and differentiable around the threshold, roughly linear above it, so penalties stay bounded and Q-value targets stay stable. An exponential form grows without bound and tends to destabilize DQN. Below threshold the penalty is small but nonzero (about 0.0013 at x=0). Document this and clip per-step reward to [−10, 10]. Implement in `exposure/thresholds.py` with the formula in the docstring.
+- All terms are normalized to comparable ranges. **Log the three terms separately every step.**
+- **Trade-off dial (Decision D2).** Fix `α = 1` and `γ` per config. Define `w = β/α`. Sample `log10(w)` uniformly from a configured range (default [−1, 2]) at every episode reset, and feed it to the policy as part of the observation (4.3). At evaluation, sweep `w` over a fixed grid (e.g. 8 log-spaced values) to trace the Pareto frontier. The runtime dial in the UI sets `w` directly and needs no retraining. Add a test showing that exposure decreases monotonically (within noise) as `w` increases.
+
+## 5. Repository Layout
+
+```
+flywaydqn/
+├── pyproject.toml            # uv or poetry; pinned dependencies
+├── README.md
+├── Makefile                  # make setup | test | train | eval | serve | ui
+├── configs/                  # Hydra YAML: env/, train/, eval/, scenarios/
+├── src/flywaydqn/
+│   ├── rf/                   # pathloss.py, array.py, codebook.py, nulling.py, sinr.py
+│   ├── mobility/             # users.py, flock.py, tracks.py (replay loaders)
+│   ├── exposure/             # density.py, metrics.py, thresholds.py
+│   ├── env/                  # beam_env.py (Gymnasium), reward.py, wrappers.py
+│   ├── agents/               # train_dqn.py, train_ppo.py, baselines.py, policy_io.py
+│   ├── explain/              # rules.py (action -> text), attribution.py
+│   ├── service/              # app.py (FastAPI), ws.py, schemas.py
+│   └── oran/                 # xapp_stub.py, e2_mock.py, README (interface design)
+├── ui/                       # React + TypeScript + Vite + deck.gl
+├── experiments/              # eval scripts, result tables, figures (generated)
+├── tests/                    # unit/ integration/ property/
+├── docker/                   # Dockerfile.service, Dockerfile.ui, compose.yaml
+└── .github/workflows/ci.yml
+```
+
+**Stack:** Python 3.11, NumPy/SciPy, Gymnasium, PyTorch, Stable-Baselines3, Hydra, Pydantic, FastAPI, TypeScript, React, deck.gl, Vite. Tooling: ruff, mypy, pytest, pre-commit, MLflow (or Weights & Biases), Docker Compose, GitHub Actions.
+
+## 6. Build Plan (ordered, with acceptance criteria)
+
+### Phase 0: Foundations
+- Initialize repo, pinned environments, linting, type checks, CI.
+- Seed management: one `seed` config value flows to NumPy, PyTorch, env.
+- **Accept:** CI green on empty test suite; `make setup` works from a clean clone.
+
+### Phase 1: RF core (pure functions, no RL)
+- `pathloss.py`: full TR 38.901 UMa LOS/NLOS with breakpoint. Unit-test against tabulated values from the spec.
+- `array.py`, `codebook.py`: UPA steering vectors, array factor, DFT codebook.
+- `nulling.py`: projection nulling. **Property test:** gain at the null bearing is below −30 dB relative to unnulled, and main-lobe loss is bounded for beams not adjacent to the null.
+- `sinr.py`: SINR and throughput mapping.
+- **Accept:** all RF unit tests pass; a plotting script reproduces beam patterns (with and without null) as a figure.
+
+### Phase 2: Mobility and exposure
+- User mobility (random waypoint or pedestrian/vehicular mix), flock generator, track replay interface.
+- Exposure computation (4.2) with vectorized NumPy.
+- **Accept:** deterministic given seed; exposure matches an independent hand calculation on 3 fixed scenarios; step cost under a defined budget (e.g. <2 ms/step).
+
+### Phase 3: Gymnasium environment
+- Implement `BeamEnv` with documented observation/action spaces, `reset(seed)`, `step`, `info` dict containing all reward terms and exposure metrics.
+- Pass `gymnasium.utils.env_checker.check_env`.
+- **Accept:** random policy and all baselines run for 1000 episodes without error; `info` fields logged.
+
+### Phase 4: Baselines (build before the RL agent)
+1. **Max-throughput SON:** greedy best beam, full power (the "unconstrained" reference).
+2. **Static back-off:** fixed power reduction during flock presence.
+3. **Sector shutdown:** off while the flock is within range (the status-quo mitigation).
+4. **Analytic nulling, no RL:** always null toward the flock when within range. *This is the key baseline.* If the DQN cannot beat it, the RL contribution must be argued differently.
+5. **PPO** (discrete) trained with the same budget.
+- **Accept:** baseline results table generated by script across ≥100 seeded scenarios.
+
+### Phase 5: DQN training
+- SB3 DQN (consider Double + Dueling variants; document choices). Hyperparameters via Hydra, sweep with Optuna or a grid.
+- Preference-conditioned training (sample `β/α` per episode).
+- Track in MLflow: reward terms, exposure metrics, throughput, exploration, Q-value statistics.
+- **Accept:** ≥5 training seeds; learning curves with confidence intervals; best checkpoint selected on a validation scenario set, reported on a held-out test set.
+
+### Phase 6: Evaluation (Section 8)
+- Run the full protocol, generate tables and figures automatically.
+- **Accept:** `make eval` regenerates every number and plot in the paper or deck.
+
+### Phase 7: Explainability
+- Rule-based explainer mapping (state, action) to text, e.g. "Null applied toward bearing 047° (flock at 180 m, density above threshold); beam 6 retained; throughput cost 3.1%." Every number is computed from the live state, not templated constants.
+- **[SHOULD]** Add counterfactual annotation: Q-value gap between chosen action and the best no-null alternative. Be explicit that this is a rule-based explanation layered on a Q-network, not an interpretation of network internals.
+- **Accept:** each emitted action carries a structured explanation object (fields) plus rendered text; unit tests cover the rules.
+
+### Phase 8: Service and dashboard
+- FastAPI: `POST /sessions` (scenario, policy, weight), `WS /sessions/{id}/stream`, `GET /metrics`, `GET /scenarios`. Pydantic schemas for state frames; version the schema.
+- UI: deck.gl map layer with sector, beam footprint (computed power-density heatmap), flock layer, user layer; side-by-side or toggled baseline vs. policy; live exposure and throughput charts; trade-off control; explanation log.
+- Streaming rate is configured honestly. Do not claim 60 FPS unless measured and the sim step supports it. Interpolate on the client if needed.
+- **Accept:** end-to-end run from a single `docker compose up`; frame schema validated by contract tests; UI smoke test (Playwright).
+
+### Phase 9: O-RAN integration (design plus mock)
+- Describe the xApp: inputs (flock feed, KPM measurements), outputs (policy constraints delivered via E2, e.g. via an E2SM-RC style control). Be precise about the timescale: the near-RT RIC loop is roughly 10 ms to 1 s. It cannot do per-slot beamforming, so the xApp should emit *beam-set/power-cap policies* the gNB applies at its own timescale.
+- Implement `xapp_stub.py` and `e2_mock.py` showing message flow with the same trained policy. Mark clearly as a mock.
+- **Accept:** integration test passes the full loop (flock feed → policy → mock E2 message) and measures decision latency.
+
+### Phase 10: Hardening and release
+- Reproducibility: pinned lockfile, Docker images, `experiments/` contains config and seed for every reported number.
+- Documentation: README, architecture doc, model card (intended use, limits, known failure modes).
+- **Accept:** a new machine reproduces the headline table within stated variance.
+
+## 7. Engineering Standards
+
+- Typed public APIs, docstrings with units (dB, dBm, W/m², meters, seconds). Unit conversions in one module only.
+- Config-driven; no magic constants in code.
+- Test pyramid: unit (RF math), property (nulling, monotonicity), integration (env + policy), contract (WS schema), UI smoke.
+- Coverage target ≥80% on `rf/`, `exposure/`, `env/`.
+- Conventional commits, protected main, CI required (lint, type check, tests).
+- Logging via structured logs; no `print` in library code.
+
+## 8. Evaluation Protocol
+
+**Scenarios:** ≥100 held-out seeds spanning flock bearing, speed, altitude, density, and user layout; separate train/validation/test seed ranges.
+
+**Metrics:**
+
+| Category | Metric |
+|---|---|
+| Service | Mean cell throughput, 5th-percentile user throughput, fraction of users below a minimum rate |
+| Exposure | Time-integrated dose over flock, `S_max`, fraction of time over threshold |
+| Cost | Mean transmit power / energy |
+| Systems | Inference latency p50/p95/p99 on a **stated** CPU (and optionally edge-class hardware), batch size 1 |
+
+**Reporting:** mean ± 95% confidence interval across seeds; paired comparisons against each baseline; Pareto frontier plot (throughput vs. exposure) from the weight sweep; threshold sensitivity table; ablations (no null action, no power levels, PPO vs. DQN, normalization variants).
+
+**Honest-result rule:** whatever the numbers are, report them. Percentages such as "X% exposure reduction at Y% throughput retained" must be defined precisely (relative to which baseline, which metric, which scenario set) and come from the pipeline.
+
+## 9. Data Sources
+
+- **Phase A (default): synthetic flocks.** Fully controllable, reproducible, and sufficient for all headline experiments. State this plainly.
+- **Phase B (optional): radar-derived tracks.**
+  - NEXRAD Level II (US) is available as open data on AWS. It gives biological-echo reflectivity fields (density and velocity), not individual bird tracks.
+  - NEXRAD covers the US only. If the deployment context is India, use IMD Doppler weather radar data where obtainable, or demonstrate the track-replay interface on US data and say so.
+  - eBird (Status and Trends) provides seasonal abundance and occurrence priors, not real-time flock positions. Use it for scenario priors, not as a live feed.
+- A claim that the agent was "trained on real NEXRAD/eBird data" is acceptable only if Phase B is executed. Otherwise phrase it as "the replay interface supports radar-derived fields."
+
+## 10. Risks and Mitigations
+
+| Risk | Mitigation |
+|---|---|
+| DQN does not beat analytic nulling baseline | Reframe the contribution as joint beam/power/null scheduling under multi-user load; show scenarios (multiple users near the flock bearing) where naive nulling hurts service |
+| Sim-to-real gap | State limits in the model card; domain randomization over propagation parameters |
+| Ecological threshold disputed | Configurable threshold, sensitivity analysis, precautionary framing |
+| Flattened action space too large | **Decision D4:** start flattened (16×4×2 = 128). Add masking only if Phase 5 diagnostics show many redundant or invalid actions. Known redundancy: `null=1` is a no-op when no flock is in range. Treat as equivalent initially. Escalate to factored heads only if learning curves stall |
+| Latency claims | Measure and publish hardware, runtime (PyTorch vs ONNX), and percentile latencies |
+| Citation errors | See Section 11 |
+
+## 11. References (verification status as of 8 Oct 2026)
+
+**Verified against publisher, indexing, or standards-body pages in this review:**
+
+| Reference | Notes |
+|---|---|
+| 3GPP TR 38.901 V19.4.0, Rel-19, *Study on channel model for frequencies from 0.5 to 100 GHz* (ETSI TR 138 901 V19.4.0, 2026-07) | Pin this version (D1) |
+| Balmori, A. (2009), "Electromagnetic pollution from phone masts. Effects on wildlife," *Pathophysiology* 16(2–3):191–199, doi:10.1016/j.pathophys.2009.01.007 | Correct venue is *Pathophysiology*, not Frontiers. Review paper; calls for further study. Do not present as proof of harm |
+| Balmori, A. (2014), "Electrosmog and species conservation," *Sci. Total Environ.* 496:314–316, doi:10.1016/j.scitotenv.2014.07.061 | Short review, same caveat |
+| Xu, J. et al. (2021), "Magnetic sensitivity of cryptochrome 4 from a migratory songbird," *Nature* 594(7864):535–540, doi:10.1038/s41586-021-03618-9 | In-vitro result in robin CRY4. The senior authors state it is not definitive proof that CRY4 is the compass sensor. It does not test RF exposure |
+| Malik, S., Schulpen, R., Bronckers, L.A., Johannsen, U., "Balancing between Data Efficiency and RF-EMF Exposure Reduction Via Beam Switching in 5G mm-Wave Channel," 2024 IEEE-APS APWC, Lisbon, pp. 10–15 | **Year is 2024, not 2026.** Concerns exposure of people (non-users), not wildlife. Cite as related work on exposure-aware beam switching |
+| Tarafder, P. and Choi, W. (2023), "Deep Reinforcement Learning-Based Coordinated Beamforming for mmWave Massive MIMO Vehicular Networks," *Sensors* 23(5):2772 | **First author is Tarafder, not "Li."** Closest verified DRL beam-codebook-selection reference |
+| Alwarafy, A., Abdallah, M., Ciftler, B.S., Al-Fuqaha, A., Hamdi, M. (2022), "The Frontiers of Deep Reinforcement Learning for Resource Management in Future Wireless HetNets," *IEEE OJ-COMS*, doi:10.1109/OJCOMS.2022.3153226 (arXiv:2106.00574) | Verified. Use as the DRL-for-wireless survey in place of "Mao et al." |
+
+**Found, but confirm authors and venue before citing:**
+
+- "Deep Learning based Wireless Resource Allocation with Application to Vehicular Networks," arXiv:1907.03289. Title and ID confirmed. Author list and journal venue (I believe Proc. IEEE, 2020) were not shown in the results.
+- Balmori, A. (2015), "Anthropogenic radiofrequency electromagnetic fields as an emerging threat to wildlife orientation": the title appears in a reference list. Confirm the venue and year.
+
+**Not found: remove from all deliverables:**
+
+- "Mao et al., arXiv:1907.00123": no matching paper found. The Mao first-author work that surfaced (Pensieve) is about video bitrate adaptation, not radio resource allocation.
+- "Pinchi et al., Cry4": not found in this pass. Use Xu et al. 2021.
+
+**Cited from memory, not re-checked in this review (check before the final README):** Mnih et al. (2015), *Nature* 518:529–533; ICNIRP (2020), *Health Physics* 118(5):483–524; Engels et al. (2014), *Nature* 509:353–356.
+
+## 12. Corrections Needed in the Existing Pitch Deck
+
+1. **Slide 5 ("Live demo") uses a screenshot of a music-player app (album covers)** sourced from Reddit. Replace with a real capture of your dashboard. The attribution slide lists a stock photo and that Reddit image; use your own screenshots and properly licensed or cited imagery.
+2. **"Validated Performance Benchmarks" (87%, 94.2%, <5 ms)** have no experiment behind them in the material provided. Replace with measured results from Section 8, and retitle to match what they are (e.g. "Simulation results, N seeds").
+3. **Q&A claim "100% real data-driven... trained on real NEXRAD and eBird"** is not supported unless Phase B is done (Section 9). Do not say it.
+4. **Inconsistencies:** the deck formula omits nothing, but the 90-second script drops the power term γ; the demo is described as both Streamlit and React; the speaker notes cite a "<5 ms inference within a 100 ms–1 s RIC loop" while claiming per-beam real-time control. Align all three with Sections 4 and 6 (Phase 9). Also, if any slide says the exposure penalty is "exponential," change it to "smooth softplus hinge" (Decision D3).
+5. **Literal LaTeX artifact on slide 2:** `$Cry4$` renders with dollar signs. Fix to "Cry4" or proper typesetting.
+6. **Wording:** "world's first" and "Zero Hardware Retrofit" are strong claims. Soften to "to our knowledge" and "software-only integration path (design stage)."
+7. **Why-DQN slide:** the PPO "rejected" rationale is asserted, not shown. Include the PPO baseline results from Phase 4/6 or soften the claim.
+
+## 13. Definition of Done
+
+- `make setup && make test && make eval && docker compose up` works from a clean clone.
+- Every number in the README and deck traces to a config, seed, and generated artifact.
+- Baselines include analytic nulling and PPO; results include CIs and threshold sensitivity.
+- Model card states scope, limitations, and the precautionary framing of the ecological threshold.
+
+## 14. Decision Log (resolved [OPEN] items)
+
+| ID | Decision | Where implemented |
+|---|---|---|
+| D1 | Scenario UMa; reference TR 38.901 V19.4.0 (Rel-19). UMi is optional config | `rf/pathloss.py`, README |
+| D2 | Preference-conditioned policy: observation carries `log10(w)`, `w = β/α`, sampled per episode, swept at eval; UI dial sets `w` | `env/beam_env.py`, `env/reward.py`, `agents/train_dqn.py`, UI |
+| D3 | Exposure penalty is a softplus hinge on `S_p95 / S_thr`, κ = 5, per-step reward clipped to [−10, 10] | `exposure/thresholds.py` |
+| D4 | Flattened 128-action space first; masking or factored heads only if Phase 5 diagnostics call for them | `env/wrappers.py` (if needed) |
+| D5 | Reference list in Section 11 supersedes earlier drafts. Unverified items removed | README, deck |

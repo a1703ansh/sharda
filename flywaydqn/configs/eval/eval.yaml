@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - /env: env.yaml
+
+n_scenarios: 200
+train_seed_start: 0
+train_seed_end: 200
+validation_seed_start: 200
+validation_seed_end: 300
+test_seed_start: 300
+test_seed_end: 500
+eval_weights_log10: [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+output_dir: experiments
