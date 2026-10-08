@@ -1,5 +1,8 @@
 name: CI
-on:
+
+# Quoted so YAML 1.1 parsers (including pyyaml, which the check-yaml
+# pre-commit hook uses) do not coerce the key to the boolean `true`.
+"on":
   push:
     branches: ["main"]
   pull_request:
@@ -10,12 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "uv"
-      - run: uv sync --all-extras --dev
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run mypy src tests
-      - run: uv run pytest -q
+
+      # uv itself must be on PATH before it can install anything; setup-python's
+      # `cache: uv` only caches a directory, so installing uv is a separate step.
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      # Delegate to the project's own gate so CI and a local `make check` run
+      # exactly the same lint, strict-typecheck, and test commands.
+      - name: Verify (lint, typecheck, tests)
+        run: make check

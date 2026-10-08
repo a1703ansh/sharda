@@ -29,6 +29,30 @@ Coverage of the Phase 1/2 modules is 94–99% (`rf/`, `exposure/`, `mobility/`),
 the 80% target in Section 7. Every number quoted above is produced by a committed
 script or test, per the no-hard-coded-results rule.
 
+### How to build and verify
+
+```bash
+make setup      # uv sync --all-extras, then install pre-commit hooks
+make check      # lint + strict typecheck + tests  (the gate CI runs)
+make figures    # regenerate the Phase 1 beam-pattern figures
+```
+
+The Makefile targets shell out to `uv`, so **uv must be on `PATH`**. CI installs it
+explicitly, then runs `make check` so the local and CI gates are identical rather
+than two drifting command lists.
+
+Two caveats about this revision, stated plainly:
+
+- The verification recorded above was run with a local virtualenv against
+  **numpy 2.5.3 and gymnasium 1.4.0**, because `uv` was not available in the build
+  environment. `pyproject.toml` currently pins `numpy<2.0` and `gymnasium<0.31`, so
+  **the pins and the tested versions do not yet agree** and no `uv.lock` exists.
+  Phase 1 results are geometry rather than version-sensitive, but the pins must be
+  reconciled, and a lockfile generated, before Phase 5 (training) can be called
+  reproducible.
+- `make check` has not been exercised end to end through `uv`, and the pre-commit
+  hooks have not been run, for the same reason.
+
 Three modelling findings from Phase 1 are worth carrying forward because they change
 results and shape Phase 4:
 
