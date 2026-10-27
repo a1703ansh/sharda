@@ -1,13 +1,50 @@
 # @package _global_
-defaults:
-  - /env: env.yaml
-
-algorithm: dqn
-policy: MlpPolicy
-total_timesteps: 2000000
-learning_rate: 0.0005
-buffer_size: 500000
-batch_size: 64
-gamma: 0.99
-train_seed: 1
-mlflow_experiment: flywaydqn_dqn
+# DQN training configuration (spec Phase 5).
+#
+# Read by `flywaydqn.agents.train_dqn`. Every key maps to a `TrainingConfig`
+# field and unknown keys are rejected.
+#
+# The default budget is deliberately small: it is a laptop-CPU first pass that
+# produces a real checkpoint, a real curve and a real baseline comparison. It is
+# NOT a converged policy, and `total_steps` must be raised (and the run reported
+# with its seed count) before any result from it is quoted as a headline number.
+#
+# Budget provenance, so this file is the single source of truth: an interrupted
+# first attempt wrote 30000 into the run's train_config.json, a later one recorded
+# 40000 in seed_1/meta.json, and this key briefly said 60000 without any run ever
+# executing that budget. 40000 is the number every shipped artifact under
+# experiments/checkpoints/dqn_first_pass/ was actually trained with (and the value
+# tests/unit/test_dqn_service.py pins), so the config now states it verbatim.
+run_name: dqn_first_pass
+seeds: [1, 2, 3]
+total_steps: 40000
+# Held-out reporting seeds: never trained on and never used for selection, so
+# every number in metrics.csv comes from scenes the policy has not seen.
+eval_seeds: [101, 102, 103, 104, 105, 106, 107, 108]
+# Validation split: scores each trained seed and picks which checkpoint is the
+# one to quote. Must stay disjoint from `seeds` and `eval_seeds`;
+# `TrainingConfig._splits_stay_disjoint` rejects a config where they overlap.
+selection_seeds: [11, 12, 13, 14]
+eval_episode_steps: 300
+checkpoint_root: experiments/checkpoints
+device: cpu
+# Preference conditioning (spec Decision D2): the environment samples
+# log10(w) from the reward config on every reset, so no extra setting is needed
+# here -- only that the episode horizon is long enough to see several weights.
+# Note: Stable-Baselines3 DQN implements Double Q-learning but not a dueling
+# head, so this trains Double DQN. Anything described as "Dueling" would have to
+# be implemented explicitly; see the model card.
+dqn:
+  learning_rate: 0.0005
+  buffer_size: 50000
+  learning_starts: 1000
+  batch_size: 64
+  gamma: 0.99
+  tau: 1.0
+  target_update_interval: 500
+  train_freq: 4
+  gradient_steps: 1
+  exploration_fraction: 0.3
+  exploration_final_eps: 0.05
+  double_q: true
+  net_arch: [128, 128]

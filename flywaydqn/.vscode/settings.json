@@ -1,0 +1,22 @@
+{
+  // Point VS Code's Python tooling at the environment that has the science
+  // stack installed. `.venv` (3.13) exists but only holds the `uv` binaries and
+  // cannot import numpy, so it is the wrong interpreter to select.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv311/Scripts/python.exe",
+  "python.analysis.extraPaths": ["${workspaceFolder}/src"],
+  "python.terminal.activateEnvironment": false,
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests"],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.venv311": true,
+    "**/.venv": true,
+    "**/dist": true
+  }
+}

@@ -16,6 +16,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 from flywaydqn.rf.array import beamforming_gain_dbi, matched_filter_weights, upa_steering_vector
@@ -33,7 +34,7 @@ NULL_AZIMUTH_DEG = 47.2  # the bearing used in the spec's example explanation
 ELEVATION_DEG = 0.0  # horizon
 
 
-def _serving_beam() -> np.ndarray:
+def _serving_beam() -> npt.NDArray[np.complex128]:
     """Unit-norm beam pointed at boresight (elevation 0, azimuth 0)."""
     return matched_filter_weights(ROWS, COLS, ELEVATION_DEG, 0.0)
 
@@ -163,7 +164,7 @@ def test_projection_can_raise_gain_in_a_direction_that_was_nulled() -> None:
     assert after > before + 20.0  # materially filled in after
 
 
-def _peak_gain_dbi(weights: np.ndarray) -> float:
+def _peak_gain_dbi(weights: npt.NDArray[np.complex128]) -> float:
     """Return the largest array gain over a dense azimuth sweep, in dBi."""
     return max(
         beamforming_gain_dbi(weights, ELEVATION_DEG, float(az), ROWS, COLS)
@@ -186,9 +187,9 @@ def test_renormalized_null_keeps_gain_physical_and_suppressed() -> None:
             gain = beamforming_gain_dbi(w, ELEVATION_DEG, float(probe), ROWS, COLS)
             if gain == -math.inf:
                 continue
-            assert gain <= bound_dbi + 1e-6, (
-                f"gain {gain:.1f} dB exceeded the {bound_dbi:.2f} dB physical bound"
-            )
+            assert (
+                gain <= bound_dbi + 1e-6
+            ), f"gain {gain:.1f} dB exceeded the {bound_dbi:.2f} dB physical bound"
         assert beamforming_gain_dbi(w, ELEVATION_DEG, float(null_azimuth), ROWS, COLS) <= -100.0
 
 
@@ -224,9 +225,9 @@ def test_main_lobe_loss_is_bounded_for_distant_nulls() -> None:
             n_rows=ROWS,
             n_cols=COLS,
         )
-        assert -1.5 < loss <= 1e-9, (
-            f"serving gain moved by {loss:.2f} dB with a null at {azimuth} deg"
-        )
+        assert (
+            -1.5 < loss <= 1e-9
+        ), f"serving gain moved by {loss:.2f} dB with a null at {azimuth} deg"
 
 
 def test_mirror_bearing_null_destroys_the_boresight_beam() -> None:

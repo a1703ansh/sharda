@@ -33,7 +33,6 @@ import numpy as np  # noqa: E402
 from flywaydqn.rf.array import (  # noqa: E402
     composite_gain_dbi,
     element_pattern_dbi,
-    matched_filter_weights,
     upa_array_factor_dbi,
 )
 from flywaydqn.rf.codebook import (  # noqa: E402
@@ -54,10 +53,7 @@ def _azimuth_cut(
     """Return gain in dBi along an azimuth cut at zero elevation."""
     function = composite_gain_dbi if composite else upa_array_factor_dbi
     return np.array(
-        [
-            function(weights, ELEVATION_DEG, float(azimuth), ROWS, COLS)
-            for azimuth in azimuths_deg
-        ]
+        [function(weights, ELEVATION_DEG, float(azimuth), ROWS, COLS) for azimuth in azimuths_deg]
     )
 
 
@@ -69,9 +65,7 @@ def make_azimuth_figure() -> tuple[plt.Figure, dict[str, float]]:
     boresight = beams[8]  # the beam whose grid azimuth is 0 deg
     scanned = beams[14]  # near the positive edge of the sector
 
-    nulled = null_toward(
-        scanned.weights, ELEVATION_DEG, FLOCK_BEARING_DEG, ROWS, COLS
-    )
+    nulled = null_toward(scanned.weights, ELEVATION_DEG, FLOCK_BEARING_DEG, ROWS, COLS)
 
     boresight_composite = _azimuth_cut(boresight.weights, azimuths)
     scanned_composite = _azimuth_cut(scanned.weights, azimuths)
@@ -83,7 +77,9 @@ def make_azimuth_figure() -> tuple[plt.Figure, dict[str, float]]:
 
     # Left: composite gain (array + element pattern), the quantity the exposure
     # model actually uses.
-    ax_left.plot(azimuths, boresight_composite, label=f"boresight beam ({boresight.azimuth_deg:.1f}°)")
+    ax_left.plot(
+        azimuths, boresight_composite, label=f"boresight beam ({boresight.azimuth_deg:.1f}°)"
+    )
     ax_left.plot(azimuths, scanned_composite, label=f"scanned beam ({scanned.azimuth_deg:.1f}°)")
     ax_left.plot(
         azimuths,
@@ -116,7 +112,7 @@ def make_azimuth_figure() -> tuple[plt.Figure, dict[str, float]]:
 
     figure.suptitle(
         "FlywayDQN beam patterns: 8x8 UPA, 3.5 GHz, 0.5λ spacing, "
-        f"TR 38.901 UMa (element pattern 8 dBi / 65° HPBW)"
+        "TR 38.901 UMa (element pattern 8 dBi / 65° HPBW)"
     )
     figure.tight_layout()
 
@@ -151,10 +147,7 @@ def make_elevation_figure() -> plt.Figure:
 
     element = np.array([element_pattern_dbi(float(e), 0.0) for e in elevations])
     boresight_array = np.array(
-        [
-            upa_array_factor_dbi(boresight.weights, float(e), 0.0, ROWS, COLS)
-            for e in elevations
-        ]
+        [upa_array_factor_dbi(boresight.weights, float(e), 0.0, ROWS, COLS) for e in elevations]
     )
     boresight_composite = np.array(
         [composite_gain_dbi(boresight.weights, float(e), 0.0, ROWS, COLS) for e in elevations]

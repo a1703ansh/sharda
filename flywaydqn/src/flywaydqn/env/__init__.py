@@ -1,23 +1,14 @@
 """Gymnasium environment: BeamEnv, reward, wrappers.
 
-``BeamEnv`` lands in Phase 3. Until then it is resolved lazily through
-``importlib``, so this package imports and typechecks without a partially-built
-environment module.
+:class:`~flywaydqn.env.beam_env.BeamEnv` (spec Phase 3) wraps the same RF,
+mobility and exposure primitives the demo twin uses, so a policy trained here
+and a policy served by :mod:`flywaydqn.service.app` are scored on identical
+physics. Rewards come from :mod:`flywaydqn.env.reward` (spec Section 4.4).
 """
 
 from __future__ import annotations
 
-from importlib import import_module
-from typing import Any
-
+from flywaydqn.env.beam_env import ENV_ID, BeamEnv, BeamEnvConfig, load_env_config
 from flywaydqn.env.reward import make_reward_fn
 
-__all__ = ["BeamEnv", "make_reward_fn"]
-
-
-def __getattr__(name: str) -> Any:
-    """Resolve ``BeamEnv`` from :mod:`flywaydqn.env.beam_env` (Phase 3)."""
-    if name == "BeamEnv":
-        module = import_module("flywaydqn.env.beam_env")
-        return module.BeamEnv
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+__all__ = ["ENV_ID", "BeamEnv", "BeamEnvConfig", "load_env_config", "make_reward_fn"]

@@ -1,0 +1,72 @@
+# Spring migration / Sector A: the reference demo scene.
+#
+# The analytic-nulling baseline serves a user cluster at +30 deg while a crane
+# flock crosses the sector at short range, sweeping past boresight. The flock
+# stays well clear of the serving beam until its closest approach, so the null
+# is cheap to place and visibly drops the footprint exposure.
+label: Spring migration / Sector A
+description: Crane flock crossing Sector A at short range; the reference demo scene.
+dt_seconds: 0.1
+seed: 1
+weight: 1.0
+
+array:
+  n_rows: 8
+  n_cols: 8
+  d_lambda: 0.5
+  elevation_deg: 0.0
+
+codebook:
+  n_beams: 16
+  azimuth_span_deg: [-60.0, 60.0]
+
+radio:
+  fc_ghz: 3.5
+  bandwidth_mhz: 100.0
+  tx_power_dbm: 53.0
+  noise_figure_db: 7.0
+  interference_dbm: -80.0
+  spectral_efficiency_cap: 6.0
+  h_bs_m: 25.0
+  h_ut_m: 1.5
+
+exposure:
+  # Precautionary management threshold: ~2% of the ICNIRP 2020 general-public
+  # reference level (10 W/m^2). The spec (Section 2.2) treats S_thr as a
+  # configurable operator choice, not a harm threshold.
+  s_thr_w_m2: 0.03
+  n_cells: 64
+
+reward:
+  alpha: 1.0
+  gamma: 0.02
+  kappa: 5.0
+  reward_clip: 10.0
+
+flock:
+  bearing_deg: -20.0
+  range_m: 600.0
+  speed_ms: 12.0
+  heading_deg: 150.0
+  altitude_min_m: 20.0
+  altitude_max_m: 80.0
+  extent_m: 30.0
+  n_individuals: 40
+  recycle_range_m: 900.0
+
+users:
+  n_users: 6
+  min_range_m: 100.0
+  max_range_m: 380.0
+  vehicular_fraction: 0.3
+  area_m: 500.0
+  bearing_center_deg: 30.0
+  bearing_half_width_deg: 12.0
+
+policy:
+  name: analytic-nulling
+  null_max_range_m: 500.0
+  serving_guard_deg: 5.0
+  mirror_guard_deg: 5.0
+  min_exposure_reduction_db: 1.0
+  max_rate_loss_frac: 0.15

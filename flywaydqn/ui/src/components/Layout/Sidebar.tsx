@@ -5,11 +5,14 @@ import { ScreenId } from '../../types';
 interface SidebarProps {
   currentScreen: ScreenId;
   onSelectScreen: (screen: ScreenId) => void;
+  /** Live null depth for the current session; 0 means the null is not applied. */
+  nullDepthDb?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentScreen,
   onSelectScreen,
+  nullDepthDb,
 }) => {
   return (
     <aside className="app-sidebar">
@@ -26,10 +29,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="nav-label">MISSION CONSOLE</div>
 
-        <nav className="nav-links">
+        <nav className="nav-links" aria-label="Mission console">
           <button
             className={`nav-btn ${currentScreen === 'beam-steering' ? 'active' : ''}`}
             onClick={() => onSelectScreen('beam-steering')}
+            aria-current={currentScreen === 'beam-steering' ? 'page' : undefined}
           >
             <Compass size={17} className="nav-icon" />
             <span>Beam Steering Console</span>
@@ -38,6 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             className={`nav-btn ${currentScreen === 'surveillance' ? 'active' : ''}`}
             onClick={() => onSelectScreen('surveillance')}
+            aria-current={currentScreen === 'surveillance' ? 'page' : undefined}
           >
             <Radar size={17} className="nav-icon" />
             <span>Flyway Surveillance</span>
@@ -46,6 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             className={`nav-btn ${currentScreen === 'dqn-inspector' ? 'active' : ''}`}
             onClick={() => onSelectScreen('dqn-inspector')}
+            aria-current={currentScreen === 'dqn-inspector' ? 'page' : undefined}
           >
             <BrainCircuit size={17} className="nav-icon" />
             <span>DQN Policy Inspector</span>
@@ -54,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             className={`nav-btn ${currentScreen === 'phased-array' ? 'active' : ''}`}
             onClick={() => onSelectScreen('phased-array')}
+            aria-current={currentScreen === 'phased-array' ? 'page' : undefined}
           >
             <Grid3X3 size={17} className="nav-icon" />
             <span>Phased Array Grid</span>
@@ -68,7 +75,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
         <div className="sidebar-spec-row">
           <span>NULL DEPTH</span>
-          <span className="sidebar-spec-val" style={{ color: '#0d9488' }}>-26.4 dB</span>
+          <span className="sidebar-spec-val" style={{ color: '#0d9488' }}>
+            {nullDepthDb !== undefined && nullDepthDb !== 0 ? `${nullDepthDb} dB` : 'null off'}
+          </span>
         </div>
         <div className="sidebar-spec-row">
           <span>ARRAY FORM</span>

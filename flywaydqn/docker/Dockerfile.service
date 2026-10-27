@@ -1,0 +1,31 @@
+# FlywayDQN demo service: FastAPI HTTP routes plus the frame WebSocket stream.
+#
+# The build context is the repository root, not this directory:
+#   docker compose -f docker/demo-compose.yaml up --build
+#   docker build -f docker/Dockerfile.service -t flywaydqn-service .
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Dependencies are declared in pyproject.toml -- the one file that cannot drift
+# from the interpreter and versions the tests run against. This repository has
+# no requirements*.txt, and this image must not pretend otherwise.
+COPY flywaydqn/pyproject.toml flywaydqn/README.md ./
+COPY flywaydqn/src ./src
+RUN pip install .
+
+# Demo scenarios, resolved through FLYWAYDQN_DEMO_CONFIGS in the compose file.
+COPY flywaydqn/configs ./configs
+
+# The directory the `dqn` controller is registered from. Checkpoints are
+# gitignored build artifacts, so a clone that never trained copies an empty
+# tree: the service then simply does not offer `dqn` instead of failing.
+COPY flywaydqn/experiments ./experiments
+
+EXPOSE 8000
+
+CMD ["uvicorn", "flywaydqn.service.app:app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

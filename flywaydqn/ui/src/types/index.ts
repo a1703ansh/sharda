@@ -3,7 +3,18 @@
 
 export type ScreenId = 'beam-steering' | 'surveillance' | 'dqn-inspector' | 'phased-array';
 
-export type SteeringEngine = 'FlywayDQN (Active Null)' | 'Baseline SON' | 'Sector Shutdown' | 'Static Back-off';
+/**
+ * One selectable controller, as reported by `GET /policies`.
+ *
+ * The engine selector is built from this list rather than from a hardcoded
+ * union, so a controller that the server does not offer cannot be shown as a
+ * choice.
+ */
+export interface PolicyOption {
+  name: string;
+  label: string;
+  description: string;
+}
 
 export interface UEData {
   id: string;
@@ -60,21 +71,41 @@ export interface SimState {
   isPlaying: boolean;
   speed: 1 | 2 | 4;
   scenario: string;
-  engine: SteeringEngine;
+  /** Registered name of the controller that produced the current frame. */
+  engine: string;
   tradeoffWeight: number; // w = beta / alpha (0 to 5.0)
   
   // RF Metrics
   peakExposureWm2: number;
+  /** The scenario's own exposure threshold, straight off the wire. */
   exposureLimitWm2: number;
   timeOverLimitSec: number;
+  /** Null depth actually achieved this step, in dB; 0 while no null is on air. */
   nullDepthDb: number;
+  /** True while the frame reports a null on the air (never inferred from depth). */
+  nullActive: boolean;
   cellThroughputGbps: number;
-  baselineThroughputGbps: number;
+  /** Sum rate as a share of the scenario's theoretical max (the reward's T̂). */
+  throughputFraction: number;
+  /** Same-seed unconstrained baseline is WP-F; empty until that is wired. */
+  baselineThroughputGbps: number | typeof Number.NaN;
   meanSinrDb: number;
   meanBlerPercent: number;
   txRfPowerW: number;
   inferenceLatencyMs: number;
-  
+
+  // Serving beam from the live frame
+  beamIndex: number;
+  beamAzimuthDeg: number;
+  beamZenithDeg: number;
+  beamGainDbi: number;
+  beam: {
+    index: number;
+    azimuthDeg: number;
+    zenithDeg: number;
+    gainDbi: number;
+  } | null;
+
   // Reward terms
   rewardThroughput: number;
   rewardExposure: number;
@@ -83,14 +114,20 @@ export interface SimState {
 
   // Active Flock
   activeFlock: FlockTarget;
-  allFlocks: FlockTarget[];
-  
-  // Users
+  allFlocks: FlockTarget[];  // Users
   users: UEData[];
-  
+
   // Logs
   decisionLogs: DecisionLogEntry[];
   radarEvents: RadarEventEntry[];
+
+  /**
+   * `frame.explanation` of the most recent displayed frame: the runner's
+   * full-text account of the decision (including, for the DQN controller, the
+   * argmax action and the Q-value the network produced). Null until the first
+   * frame arrives; never fabricated.
+   */
+  explanation: string | null;
 }
 
 /**
@@ -104,6 +141,12 @@ export interface StateFrame {
   beam: BeamState;
   powerMw: number;
   nullActive: boolean;
+  /** Measured exposure reduction against the same scenario's un-nulled beam. */
+  nullDepthDb: number;
+  /** Server-measured policy-decision latency for this step, in ms. */
+  inferenceLatencyMs: number;
+  /** Controller that produced this frame. */
+  policyName: string;
   flock: FlockState;
   users: UserState[];
   metrics: StepMetrics;
@@ -147,6 +190,8 @@ export interface StepMetrics {
   maxDensityWm2: number;
   fracOver: number;
   doseWsm2: number;
+  /** The scenario's exposure threshold, i.e. the penalty's denominator. */
+  sThrWm2: number;
   exposurePenalty: number;
   throughputTerm: number;
   powerTerm: number;
@@ -157,6 +202,8 @@ export interface ScenarioRequest {
   key: string;
   seed: number;
   weight: number;
+  /** Registered policy name; omitted means the scenario file's own policy. */
+  policy?: string | null;
 }
 
 export interface SessionCreated {

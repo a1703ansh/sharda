@@ -1,0 +1,33 @@
+# Judge-facing demo: `docker compose -f docker/demo-compose.yaml up --build`.
+#
+# Both builds use the repository root as their context (see the `dockerfile`
+# paths). `backend` publishes the API and the frame WebSocket; `ui` publishes
+# the built dashboard, which talks to the API directly from the browser.
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+    ports:
+      - "8000:8000"
+    environment:
+      # Scenario YAMLs are copied to /app/configs; this pins the lookup so the
+      # service never depends on the working directory.
+      - FLYWAYDQN_DEMO_CONFIGS=/app/configs/demo
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ui
+      args:
+        # Baked into the bundle by Vite, so it must be a URL the *browser* can
+        # reach: the published backend port on the host, not `backend:8000`.
+        VITE_API_BASE: http://localhost:8000
+    ports:
+      # nginx serves on 80 inside the container. Publishing it as 5173 keeps the
+      # browser's origin inside the service's CORS allowlist (see ui/nginx.conf).
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

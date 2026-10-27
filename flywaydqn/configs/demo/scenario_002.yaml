@@ -1,0 +1,67 @@
+# Storm front / Sector B: the no-mitigation reference.
+#
+# A faster flock is pushed off heading and passes straight over the boresight
+# while a heavier user load sits near it, so the greedy beam tracks the flock
+# region and footprint exposure peaks. The unconstrained policy never nulls,
+# which is exactly what this scenario exists to show.
+label: Storm front / Sector B
+description: Faster flock pushed off heading, with heavier multi-user load near it.
+dt_seconds: 0.1
+seed: 2
+weight: 1.0
+
+array:
+  n_rows: 8
+  n_cols: 8
+  d_lambda: 0.5
+  elevation_deg: 0.0
+
+codebook:
+  n_beams: 16
+  azimuth_span_deg: [-60.0, 60.0]
+
+radio:
+  fc_ghz: 3.5
+  bandwidth_mhz: 100.0
+  tx_power_dbm: 53.0
+  noise_figure_db: 7.0
+  interference_dbm: -80.0
+  spectral_efficiency_cap: 6.0
+  h_bs_m: 25.0
+  h_ut_m: 1.5
+
+exposure:
+  # Precautionary management threshold: ~2% of the ICNIRP 2020 general-public
+  # reference level (10 W/m^2). The spec (Section 2.2) treats S_thr as a
+  # configurable operator choice, not a harm threshold.
+  s_thr_w_m2: 0.03
+  n_cells: 64
+
+reward:
+  alpha: 1.0
+  gamma: 0.02
+  kappa: 5.0
+  reward_clip: 10.0
+
+flock:
+  bearing_deg: -54.0
+  range_m: 560.0
+  speed_ms: 18.0
+  heading_deg: 110.0
+  altitude_min_m: 20.0
+  altitude_max_m: 80.0
+  extent_m: 40.0
+  n_individuals: 60
+  recycle_range_m: 900.0
+
+users:
+  n_users: 10
+  min_range_m: 80.0
+  max_range_m: 260.0
+  vehicular_fraction: 0.4
+  area_m: 500.0
+  bearing_center_deg: 20.0
+  bearing_half_width_deg: 20.0
+
+policy:
+  name: unconstrained

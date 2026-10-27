@@ -1,0 +1,119 @@
+{
+  // FlywayDQN tasks, driven by the debug configurations in launch.json.
+  //
+  // Every Python task uses `.venv311` — the interpreter that actually has
+  // numpy / pydantic / fastapi / torch installed. The repo's `requires-python`
+  // is `==3.11.*`, which is why the 3.11 environment is the one to use.
+  //
+  // `PYTHONPATH=src` is what makes `flywaydqn` importable without an editable
+  // install. `uv sync --all-extras` (the Makefile's `setup` target) is the
+  // supported way to build the environment from scratch.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Ctrl+Shift+B from a clean checkout: backend on :8000 and UI on :5173.
+      // This path uses plain shell commands only, so it works whether or not
+      // VS Code's Python debugger has been initialised.
+      "label": "demo: start all",
+      "dependsOn": ["backend: start (:8000)", "ui: dev server"],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": {
+        "group": "demo",
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "ui: dev server",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/ui"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "ready in"
+        }
+      },
+      "presentation": {
+        "group": "demo",
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "ui: test + build",
+      "type": "shell",
+      "command": "npm run build",
+      "options": {
+        "cwd": "${workspaceFolder}/ui"
+      },
+      "group": "test",
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "backend: start (:8000)",
+      "type": "shell",
+      "command": "PYTHONPATH=src .venv311/Scripts/python.exe -m uvicorn flywaydqn.service.app:app --factory --host 127.0.0.1 --port 8000",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "group": "demo",
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "backend: health check",
+      "type": "shell",
+      "command": "curl -s http://127.0.0.1:8000/healthz && echo && curl -s http://127.0.0.1:8000/policies",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: pytest",
+      "type": "shell",
+      "command": "PYTHONPATH=src .venv311/Scripts/python.exe -m pytest -q --no-cov",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: typecheck (mypy)",
+      "type": "shell",
+      "command": ".venv311/Scripts/python.exe -m mypy src",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": ["$mypy"]
+    },
+    {
+      // Run after "demo: start all"; confirms the service is answering before
+      // a judge is looking at the screen.
+      "label": "demo: check backend",
+      "type": "shell",
+      "command": "bash -c 'curl -s http://127.0.0.1:8000/scenarios > /dev/null && echo "Backend is up on :8000. Open http://localhost:5173"'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

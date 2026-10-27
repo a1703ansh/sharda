@@ -1,7 +1,24 @@
-.PHONY: setup clean test test-rf test-property lint format typecheck train eval figures serve ui check
+# FlywayDQN developer entry points.
+#
+# Interpreter resolution. `uv` when it is on PATH (CI installs it, and
+# `make setup` creates the environment with it); otherwise the local `.venv311`
+# interpreter. Every target goes through one resolved interpreter, so the local
+# gate and the CI gate run the same commands and cannot drift apart.
+_UV := $(shell command -v uv 2>/dev/null)
+ifeq ($(_UV),)
+  _PY  ?= ./.venv311/Scripts/python.exe
+  _PYM := $(_PY) -m
+else
+  _PYM := uv run python -m
+endif
+
+.PHONY: setup clean test test-rf test-property lint format typecheck check \
+        train train-eval eval figures serve ui demo demo-serve demo-ui
 
 # --- setup -------------------------------------------------------------------
 
+# Creates .venv from pyproject.toml. Requires `uv`: there is no requirements
+# file in this repository, so this is the only supported bootstrap.
 setup:
 	uv sync --all-extras
 	uv run pre-commit install || true
@@ -13,42 +30,63 @@ clean:
 
 # --- verification ------------------------------------------------------------
 
-test:
-	uv run pytest -q
-
-test-rf:
-	uv run pytest tests/unit -q
-
-test-property:
-	uv run pytest tests/property -q
-
 lint:
-	uv run ruff check src tests
-	uv run ruff format --check src tests
+	$(_PYM) ruff check src tests experiments
+	$(_PYM) ruff format --check src tests experiments
 
 format:
-	uv run ruff format src tests
-	uv run ruff check --fix src tests
+	$(_PYM) ruff format src tests experiments
+	$(_PYM) ruff check --fix src tests experiments
 
 typecheck:
-	uv run mypy src tests
+	$(_PYM) mypy src tests
 
-# Full local gate: lint, typecheck, tests.
+test:
+	$(_PYM) pytest tests -q
+
+test-rf:
+	$(_PYM) pytest tests/unit -q
+
+test-property:
+	$(_PYM) pytest tests/property -q
+
+# Full local gate: the same three steps the CI job runs.
 check: lint typecheck test
 
-# --- pipeline ----------------------------------------------------------------
+# --- pipeline -----------------------------------------------------------------
 
+# Train the Double DQN; checkpoints land in experiments/checkpoints/<run_name>/.
 train:
-	uv run python -m flywaydqn.agents.train_dqn --config-path configs/train
+	$(_PYM) flywaydqn.agents.train_dqn --config configs/train/train.yaml
 
+# Refresh the trained-policy comparison table from stored checkpoints without
+# retraining. Needs a checkpoint, so run `make train` first.
+train-eval:
+	$(_PYM) flywaydqn.agents.train_dqn --eval-only
+
+# Regenerate the measured baseline table (experiments/results/baselines.{csv,md}).
+# Works on a clean clone: the trained controller is included only when a
+# checkpoint is present, and its absence is printed rather than hidden.
 eval:
-	uv run python -m flywaydqn.agents.eval_main --config-path configs/eval
+	$(_PYM) experiments.run_baselines
 
 figures:
-	uv run python -m experiments.make_beam_pattern_figure
+	$(_PYM) experiments.make_beam_pattern_figure
+
+# --- run ---------------------------------------------------------------------
 
 serve:
-	uv run uvicorn flywaydqn.service.app:app --factory --host 127.0.0.1 --port 8000
+	$(_PYM) uvicorn flywaydqn.service.app:app --factory --host 127.0.0.1 --port 8000
 
 ui:
+	cd ui && npm run dev
+
+demo-serve:
+	$(_PYM) uvicorn flywaydqn.service.app:app --factory --host 127.0.0.1 --port 8000
+
+demo-ui:
+	cd ui && npm run dev
+
+demo:
+	$(_PYM) uvicorn flywaydqn.service.app:app --factory --host 127.0.0.1 --port 8000 &
 	cd ui && npm run dev

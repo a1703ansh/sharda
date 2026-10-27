@@ -121,7 +121,9 @@ def upa_steering_vector(
     m_idx = np.arange(n_rows, dtype=np.float64)[:, None]
     phase = 2.0 * math.pi * d_lambda * (n_idx * v_azimuth + m_idx * v_elevation)
 
-    return np.exp(1j * phase).reshape(-1)
+    # Pin the dtype explicitly: numpy's stubs type the elementwise exponential as
+    # Any, which would otherwise leak out of this typed public function.
+    return np.asarray(np.exp(1j * phase).reshape(-1), dtype=np.complex128)
 
 
 def matched_filter_weights(

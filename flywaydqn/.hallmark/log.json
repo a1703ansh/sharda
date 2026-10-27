@@ -1,0 +1,9 @@
+[
+  {
+    "date": "2026-10-15",
+    "macrostructure": "Console Shell (pre-existing app — audit fix pass, structure unchanged)",
+    "theme": "FlywayDQN Teal (pre-existing hex system)",
+    "enrichment": "none",
+    "brief": "flywaydqn/ui — Hallmark audit fix pass: P0 responsive/a11y/motion + P1 tokens/states/guards"
+  }
+]

@@ -1,0 +1,82 @@
+{
+  // FlywayDQN debug configurations.
+  //
+  // Open the `flywaydqn` folder itself in VS Code (File > Open Folder), not its
+  // parent, so ${workspaceFolder} resolves to the repo root.
+  //
+  // Quickest path for the judges' demo:
+  //   "Run and Debug" (Ctrl+Shift+D) > "FlywayDQN full demo"
+  // That starts the backend on :8000 and the UI on :5173, then opens the console.
+  //
+  // The UI also runs on its own with no backend at all — it falls back to a
+  // built-in scene — so "FlywayDQN UI only" is a safe fallback if anything
+  // goes wrong with Python.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FlywayDQN backend (FastAPI :8000)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "flywaydqn.service.app:app",
+        "--factory",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.venv311/Scripts/python.exe",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "FlywayDQN backend (train/step debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "flywaydqn.service.app:app",
+        "--factory",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000",
+        "--reload"
+      ],
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.venv311/Scripts/python.exe",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "FlywayDQN UI (Chrome :5173)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/ui/src",
+      "preLaunchTask": "ui: dev server"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "FlywayDQN full demo",
+      "configurations": [
+        "FlywayDQN backend (FastAPI :8000)",
+        "FlywayDQN UI (Chrome :5173)"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "group": "demo",
+        "order": 1
+      }
+    }
+  ]
+}

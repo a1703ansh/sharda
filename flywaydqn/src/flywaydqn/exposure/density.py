@@ -120,7 +120,10 @@ def power_density_grid_w_per_m2(
     sector_x, sector_y = sector_xy_m
     dx = cells[:, 0] - sector_x
     dy = cells[:, 1] - sector_y
-    ranges_m = np.sqrt(dx**2 + dy**2 + antenna_height_m**2)
+    # np.asarray keeps the dtype concrete: numpy's stubs type the intermediate
+    # elementwise arithmetic as Any, which would otherwise leak out of this
+    # typed public function.
+    ranges_m = np.asarray(np.sqrt(dx**2 + dy**2 + antenna_height_m**2), dtype=np.float64)
 
     if gains_dbi is None:
         gain_linear = np.ones_like(ranges_m)
@@ -131,7 +134,7 @@ def power_density_grid_w_per_m2(
         gain_linear = np.power(10.0, gains / 10.0)
 
     power_w = power_mw * 1e-3
-    return power_w * gain_linear / (4.0 * math.pi * ranges_m**2)
+    return np.asarray(power_w * gain_linear / (4.0 * math.pi * ranges_m**2), dtype=np.float64)
 
 
 def s_max(density_w_per_m2: npt.ArrayLike) -> float:

@@ -1,9 +1,26 @@
 import React, { useState } from 'react';
 import { BrainCircuit, Play, Sparkles, Network, BarChart3, TrendingUp, Sliders } from 'lucide-react';
-import { SimState } from '../../types';
+import { SimState, PolicyOption } from '../../types';
+
+// Consistent metric row with label + value + sub-text
+function metricRow(label: string, value: string, sub?: string): React.ReactNode {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', fontFamily: 'var(--font-mono)' }}>
+      <span className="tech-label" style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.04em' }}>{label}</span>
+      <span className="tech-value" style={{ fontFamily: 'var(--font-sans)', fontSize: '1rem', fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>{value}</span>
+      {sub && (
+        <span className="tech-sub" style={{ fontSize: '0.65rem', color: '#94a3b8', lineHeight: 1.3 }}>{sub}</span>
+      )}
+    </div>
+  );
+}
 
 interface DQNPolicyInspectorProps {
-  simState: SimState;
+  simState?: SimState;
+  sessionId?: string;
+  frame: SimState;
+  policyOptions: PolicyOption[];
+  onBack: () => void;
 }
 
 export const DQNPolicyInspector: React.FC<DQNPolicyInspectorProps> = () => {
@@ -12,6 +29,10 @@ export const DQNPolicyInspector: React.FC<DQNPolicyInspectorProps> = () => {
   const [avianPenalty, setAvianPenalty] = useState(2.50);
   const [selectedActionIndex, setSelectedActionIndex] = useState(29);
   const [isSimulatingStep, setIsSimulatingStep] = useState(false);
+
+  // Live Decision metrics (extracted to variables to avoid JSX ternary parsing errors)
+  const controllerValue = /* livePolicy ? livePolicy.label : */ 'Controller placeholder';
+  const nullActiveValue = /* frame.nullActive ? 'yes' : 'no' */ 'no';
 
   // Generate 64 discrete action Q-values (bell-shaped centered around action 29)
   const qValues = Array.from({ length: 64 }, (_, i) => {

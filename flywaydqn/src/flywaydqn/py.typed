@@ -1,0 +1,3 @@
+# Marker file for PEP 561. The package ships inline type annotations, so
+# `mypy` treats `flywaydqn.*` as typed when a consumer (or `tests/`, which
+# imports the *installed* package) analyzes it from outside `src/`.

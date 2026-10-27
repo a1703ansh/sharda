@@ -1,0 +1,25 @@
+# Docker build context (the repository root, per docker/demo-compose.yaml).
+#
+# Both images copy explicit paths, so everything else is dead weight in the
+# context upload. The virtualenvs and node_modules are the big ones.
+.git
+.github
+.vscode
+.freebuff
+
+.venv
+.venv311
+**/__pycache__
+**/*.pyc
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.coverage
+coverage.xml
+
+ui/node_modules
+ui/dist
+
+# Local run logs; the measured tables themselves are copied on purpose.
+experiments/**/*.log
+**.log

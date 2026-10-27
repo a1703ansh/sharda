@@ -1,0 +1,11 @@
+{
+  "scanned_at": "2026-10-15",
+  "project": "flywaydqn/ui (FlywayDQN — 5G beamforming / avian telemetry console)",
+  "framework": "React 19 + Vite 6 + Tailwind v4 via @tailwindcss/vite; TypeScript",
+  "fonts": "Space Grotesk (display) + Inter (body) + JetBrains Mono (mono) — Google Fonts link in flywaydqn/ui/index.html",
+  "palette": "hex CSS custom properties in :root (flywaydqn/ui/src/index.css); teal anchor #0d9488",
+  "motion": "motion-cut — no framer-motion/gsap/motion/lenis in package.json",
+  "spacing": "ad-hoc px values pre-audit; 4pt semantic scale (--space-*) introduced in this audit-fix pass",
+  "hallmark_preserved": "font stack, palette token names, class names, routes/screens",
+  "hallmark_introduced": "macrostructure stamp, type scale, spacing scale, easing/duration tokens, prefers-reduced-motion, :focus-visible rings, responsive breakpoints (768/480), slop-test gates"
+}
